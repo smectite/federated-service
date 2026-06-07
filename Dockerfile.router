@@ -1,0 +1,17 @@
+# syntax=docker/dockerfile:1
+# Production router image with the composed supergraph SDL and config baked in.
+# CI composes supergraph.graphql (pointing subgraph URLs at Cloud Map DNS), then
+# builds this image.
+#
+# Build:
+#   rover supergraph compose --config supergraph.aws.yaml > supergraph.graphql
+#   docker build -f Dockerfile.router -t <ecr>/router:latest .
+FROM ghcr.io/apollographql/router:v1.52.1
+
+COPY supergraph.graphql /dist/schema/supergraph.graphql
+COPY router.aws.yaml /dist/config/router.yaml
+
+ENV APOLLO_ROUTER_SUPERGRAPH_PATH=/dist/schema/supergraph.graphql
+ENV APOLLO_ROUTER_CONFIG_PATH=/dist/config/router.yaml
+
+EXPOSE 4000 8088

@@ -1,0 +1,16 @@
+# rover supergraph compose config. Composes the two subgraphs into a single
+# supergraph SDL consumed by the Apollo Router.
+#   rover supergraph compose --config supergraph.yaml > supergraph.graphql
+#
+# routing_url values are the in-network addresses the router uses at runtime;
+# they match the service names in docker-compose.
+federation_version: =2.9.1
+subgraphs:
+  users:
+    routing_url: http://users:4001/graphql
+    schema:
+      subgraph_url: http://localhost:4001/graphql
+  orders:
+    routing_url: http://orders:4002/graphql
+    schema:
+      subgraph_url: http://localhost:4002/graphql

@@ -1,0 +1,17 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+coverage/
+supergraph.graphql
+.DS_Store
+*.log
+infra/terraform/.terraform/
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.*
+infra/terraform/.terraform.lock.hcl
+
+# Corporate TLS root CA (machine-specific, for container egress behind Zscaler)
+certs/

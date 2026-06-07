@@ -1,0 +1,8 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/core" },
+    { "path": "services/users" },
+    { "path": "services/orders" }
+  ]
+}

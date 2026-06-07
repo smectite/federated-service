@@ -1,0 +1,28 @@
+# Apollo Router configuration. The router serves the composed supergraph and
+# routes operations to the users/orders subgraphs.
+supergraph:
+  listen: 0.0.0.0:4000
+  introspection: true
+
+health_check:
+  listen: 0.0.0.0:8088
+  path: /health
+
+# Subgraph routing URLs are read from the composed supergraph SDL, but can be
+# overridden here per-environment if needed.
+override_subgraph_url:
+  users: http://users:4001/graphql
+  orders: http://orders:4002/graphql
+
+# CORS open for local dev; tighten origins in production.
+cors:
+  origins:
+    - http://localhost:3000
+  allow_any_origin: true
+
+telemetry:
+  exporters:
+    logging:
+      stdout:
+        enabled: true
+        format: json

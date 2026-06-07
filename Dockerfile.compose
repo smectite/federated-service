@@ -1,0 +1,35 @@
+# syntax=docker/dockerfile:1
+# One-shot supergraph composer. The Apollo-published rover container image is
+# unreliable across registries/arches, so we install rover via its official
+# script onto a slim Debian base instead. Runs `rover supergraph compose` and
+# writes the SDL to the shared volume the router mounts.
+#
+# Corporate TLS interception (e.g. Zscaler) breaks the install script's HTTPS
+# download from inside the container. Drop the corporate root CA into ./certs/
+# (any *.pem/*.crt) and it is trusted before the install runs. On a normal
+# network ./certs/ can be empty — the COPY is a no-op.
+FROM debian:12-slim
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends curl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+# Trust any corporate root CAs provided in ./certs (optional). The trailing
+# placeholder file guarantees the COPY source always matches at least one entry.
+COPY certs/ /usr/local/share/ca-certificates/extra/
+RUN if ls /usr/local/share/ca-certificates/extra/* >/dev/null 2>&1; then \
+      for f in /usr/local/share/ca-certificates/extra/*; do \
+        cp "$f" "/usr/local/share/ca-certificates/extra-$(basename "$f").crt"; \
+      done; \
+    fi; \
+    update-ca-certificates
+
+ENV APOLLO_TELEMETRY_DISABLED=true
+# Install rover and fail the build if the binary is missing afterward.
+RUN curl -sSL https://rover.apollo.dev/nix/latest | sh \
+  && test -x /root/.rover/bin/rover \
+  && /root/.rover/bin/rover --version
+ENV PATH="/root/.rover/bin:${PATH}"
+
+ENTRYPOINT ["/bin/sh", "-c"]
+CMD ["rover supergraph compose --config /config/supergraph.docker.yaml --elv2-license accept --output /out/supergraph.graphql"]

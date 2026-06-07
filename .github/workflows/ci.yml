@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: npm test
+
+  compose-check:
+    runs-on: ubuntu-latest
+    needs: build-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # Boot both subgraphs on localhost, then verify the supergraph composes.
+      - name: Start subgraphs
+        run: |
+          USERS_PORT=4001 node services/users/dist/index.js &
+          ORDERS_PORT=4002 node services/orders/dist/index.js &
+          npx wait-on http://localhost:4001/healthz http://localhost:4002/healthz
+        env:
+          # Best-effort backing stores; subgraphs start without them and the
+          # introspection (_service.sdl) used by compose needs no data access.
+          REDIS_NODES: localhost:7000
+          KAFKA_BROKERS: localhost:9092
+      - name: Install Rover
+        run: |
+          curl -sSL https://rover.apollo.dev/nix/latest | sh
+          echo "$HOME/.rover/bin" >> "$GITHUB_PATH"
+      - name: Compose supergraph
+        run: rover supergraph compose --config supergraph.yaml --elv2-license accept > supergraph.graphql
+      - name: Assert composition produced SDL
+        run: test -s supergraph.graphql && grep -q "type User" supergraph.graphql
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: build-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build users image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/users/Dockerfile
+          push: false
+      - name: Build orders image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/orders/Dockerfile
+          push: false

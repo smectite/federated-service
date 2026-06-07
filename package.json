@@ -1,0 +1,38 @@
+{
+  "name": "federated-service",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Federated GraphQL + REST microservice (Apollo Federation 2, Express, TypeScript)",
+  "workspaces": [
+    "packages/*",
+    "services/*"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "overrides": {
+    "graphql": "^16.8.1",
+    "@apollo/server": "^5.0.0"
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "tsc --build --clean",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --write \"**/*.{ts,json,md,yaml,yml}\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev:users": "npm run dev --workspace services/users",
+    "dev:orders": "npm run dev --workspace services/orders",
+    "compose:supergraph": "rover supergraph compose --config supergraph.yaml --elv2-license accept > supergraph.graphql"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@typescript-eslint/eslint-plugin": "^7.13.0",
+    "@typescript-eslint/parser": "^7.13.0",
+    "eslint": "^8.57.0",
+    "prettier": "^3.3.2",
+    "tsx": "^4.15.6",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  }
+}

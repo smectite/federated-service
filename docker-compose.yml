@@ -1,0 +1,158 @@
+# Local end-to-end stack: dynamodb-local, redis cluster, kafka, both subgraphs,
+# a one-shot rover compose step, and the Apollo Router.
+#
+#   docker compose up --build
+# Then query the router at http://localhost:4000
+
+services:
+  dynamodb:
+    image: amazon/dynamodb-local:latest
+    command: ['-jar', 'DynamoDBLocal.jar', '-inMemory', '-sharedDb']
+    ports:
+      - '8000:8000'
+
+  dynamodb-init:
+    image: amazon/aws-cli:latest
+    depends_on:
+      - dynamodb
+    environment:
+      DYNAMODB_ENDPOINT: http://dynamodb:8000
+      AWS_REGION: us-east-1
+      DYNAMODB_USERS_TABLE: users
+      DYNAMODB_ORDERS_TABLE: orders
+    entrypoint: ['/bin/sh', '/scripts/init-dynamodb.sh']
+    volumes:
+      - ./scripts:/scripts:ro
+
+  # Single-node Redis for local dev. A real Redis Cluster needs >=3 masters, so
+  # locally we run plain Redis and set REDIS_CLUSTER=false on the services; AWS
+  # uses ElastiCache cluster mode (REDIS_CLUSTER=true).
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--save', '', '--appendonly', 'no']
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Apache Kafka in KRaft mode (official image; Bitnami kafka tags removed).
+  kafka:
+    image: apache/kafka:3.9.2
+    environment:
+      KAFKA_NODE_ID: '1'
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:9093'
+      KAFKA_LISTENERS: 'PLAINTEXT://:9092,CONTROLLER://:9093'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:9092'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: '1'
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: '1'
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: '1'
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+    ports:
+      - '9092:9092'
+    healthcheck:
+      test: ['CMD-SHELL', '/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  users:
+    build:
+      context: .
+      dockerfile: services/users/Dockerfile
+    depends_on:
+      dynamodb-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      AWS_REGION: us-east-1
+      DYNAMODB_ENDPOINT: http://dynamodb:8000
+      DYNAMODB_USERS_TABLE: users
+      REDIS_NODES: redis:6379
+      REDIS_CLUSTER: 'false'
+      KAFKA_BROKERS: kafka:9092
+      USERS_PORT: '4001'
+    ports:
+      - '4001:4001'
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'node -e "fetch(\"http://localhost:4001/healthz\").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  orders:
+    build:
+      context: .
+      dockerfile: services/orders/Dockerfile
+    depends_on:
+      dynamodb-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      AWS_REGION: us-east-1
+      DYNAMODB_ENDPOINT: http://dynamodb:8000
+      DYNAMODB_ORDERS_TABLE: orders
+      REDIS_NODES: redis:6379
+      REDIS_CLUSTER: 'false'
+      KAFKA_BROKERS: kafka:9092
+      ORDERS_PORT: '4002'
+    ports:
+      - '4002:4002'
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'node -e "fetch(\"http://localhost:4002/healthz\").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # One-shot: compose the supergraph SDL from the running subgraphs into a shared
+  # volume the router reads. Re-runs on each `up`.
+  supergraph-compose:
+    build:
+      context: .
+      dockerfile: Dockerfile.compose
+    depends_on:
+      users:
+        condition: service_healthy
+      orders:
+        condition: service_healthy
+    volumes:
+      - ./supergraph.docker.yaml:/config/supergraph.docker.yaml:ro
+      - supergraph:/out
+
+  router:
+    image: ghcr.io/apollographql/router:v1.52.1
+    depends_on:
+      supergraph-compose:
+        condition: service_completed_successfully
+    environment:
+      APOLLO_ROUTER_SUPERGRAPH_PATH: /dist/schema/supergraph.graphql
+      APOLLO_ROUTER_CONFIG_PATH: /dist/config/router.yaml
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - >
+        until [ -f /dist/schema/supergraph.graphql ]; do echo 'waiting for supergraph'; sleep 2; done &&
+        /dist/router --supergraph /dist/schema/supergraph.graphql --config /dist/config/router.yaml
+    ports:
+      - '4000:4000'
+    volumes:
+      - ./router.yaml:/dist/config/router.yaml:ro
+      - supergraph:/dist/schema
+
+volumes:
+  supergraph:

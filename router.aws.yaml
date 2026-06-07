@@ -1,0 +1,23 @@
+# Apollo Router config for AWS. Subgraph URLs resolve via Cloud Map private DNS;
+# the ECS task injects USERS_URL / ORDERS_URL which override the SDL routing URLs.
+supergraph:
+  listen: 0.0.0.0:4000
+  introspection: false
+
+health_check:
+  listen: 0.0.0.0:8088
+  path: /health
+
+override_subgraph_url:
+  users: ${env.USERS_URL}
+  orders: ${env.ORDERS_URL}
+
+cors:
+  allow_any_origin: true
+
+telemetry:
+  exporters:
+    logging:
+      stdout:
+        enabled: true
+        format: json

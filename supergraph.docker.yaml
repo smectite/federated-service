@@ -1,0 +1,13 @@
+# Variant of supergraph.yaml used when composing from inside the docker network,
+# where subgraphs are reachable by service name rather than localhost. Used by the
+# router container's compose step in docker-compose.
+federation_version: =2.9.1
+subgraphs:
+  users:
+    routing_url: http://users:4001/graphql
+    schema:
+      subgraph_url: http://users:4001/graphql
+  orders:
+    routing_url: http://orders:4002/graphql
+    schema:
+      subgraph_url: http://orders:4002/graphql
