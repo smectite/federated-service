@@ -14,7 +14,9 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
+        # npm ci with a fallback for the optional-deps bug (npm/cli#4828): if the
+        # lockfile is missing a platform's native rollup binary, clear and reinstall.
+      - run: npm ci || (rm -rf node_modules package-lock.json && npm install)
       - run: npm run lint
       - run: npm run build
       - run: npm test
@@ -28,7 +30,9 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
+        # npm ci with a fallback for the optional-deps bug (npm/cli#4828): if the
+        # lockfile is missing a platform's native rollup binary, clear and reinstall.
+      - run: npm ci || (rm -rf node_modules package-lock.json && npm install)
       - run: npm run build
       # Boot both subgraphs on localhost, then verify the supergraph composes.
       - name: Start subgraphs
